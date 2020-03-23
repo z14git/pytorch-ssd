@@ -11,7 +11,7 @@ import argparse
 import sys
 import functools
 from urllib import request
-
+from random import sample 
 
 s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
@@ -82,6 +82,10 @@ def parse_args():
                         help="This file specifies the image ids you want to exclude.")
     parser.add_argument('--remove_overlapped', action='store_true',
                         help="Remove single boxes covered by group boxes.")
+    parser.add_argument('--max-images-train', type=int, default=-1)
+    parser.add_argument('--max-images-test', type=int, default=-1)
+    parser.add_argument('--max-images-val', type=int, default=-1)
+
     return parser.parse_args()
 
 
@@ -119,7 +123,7 @@ if __name__ == '__main__':
             excluded_images.add(img_id)
 
     class_description_file = os.path.join(args.root, "class-descriptions-boxable.csv")
-    if not os.path.exists(class_description_file):
+    if not os.path.isfile(class_description_file):
         url = "https://storage.googleapis.com/openimages/2018_04/class-descriptions-boxable.csv"
         logging.warning(f"Download {url}.")
         http_download(url, class_description_file)
@@ -129,6 +133,12 @@ if __name__ == '__main__':
     class_descriptions = class_descriptions[class_descriptions['ClassName'].isin(class_names)]
 
     image_files = []
+    image_files_max = {}
+
+    image_files_max["train"] = int(args.max_images_train / len(class_names))
+    image_files_max["validation"] = int(args.max_images_val / len(class_names))
+    image_files_max["test"] = int(args.max_images_test / len(class_names))
+
     for dataset_type in ["train", "validation", "test"]:
         image_dir = os.path.join(args.root, dataset_type)
         os.makedirs(image_dir, exist_ok=True)
@@ -146,6 +156,8 @@ if __name__ == '__main__':
         if not args.include_depiction:
             annotations = annotations.loc[annotations['IsDepiction'] != 1, :]
 
+        print(' ')
+
         filtered = []
         for class_name, group_filter, percentage in zip(class_names, group_filters, percentages):
             sub = annotations.loc[annotations['ClassName'] == class_name, :]
@@ -155,6 +167,25 @@ if __name__ == '__main__':
                 excluded_images |= set(sub.loc[sub['IsGroupOf'] == 1, 'ImageID'])
             elif group_filter == 'group':
                 excluded_images |= set(sub.loc[sub['IsGroupOf'] == 0, 'ImageID'])
+
+            num_images = len(sub)
+
+            print('dataset_type ' + str(dataset_type))
+            print('class_name   ' + str(class_name))
+            print('group_filter ' + str(group_filter))
+            print('percentage   ' + str(percentage))
+            print('max images   ' + str(image_files_max[dataset_type]))
+            print('total images ' + str(len(sub)))
+
+            if image_files_max[dataset_type] > 0 and len(sub) > image_files_max[dataset_type]:
+                exclude_count = len(sub) - image_files_max[dataset_type]
+                excluded_images |= set(list(sub['ImageID'])[:exclude_count]) #set(sample(set(sub['ImageID']), exclude_count)) #.sample(n=exclude_count))
+                num_images = num_images - exclude_count
+                print('num excluded ' + str(exclude_count))
+
+            print('used images  ' + str(num_images))
+            print(' ')
+
             filtered.append(sub)
 
         annotations = pd.concat(filtered)
