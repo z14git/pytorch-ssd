@@ -30,6 +30,7 @@ class Predictor:
         cpu_device = torch.device("cpu")
         height, width, _ = image.shape
         image = self.transform(image)
+        #print(image)
         images = image.unsqueeze(0)
         images = images.to(self.device)
         with torch.no_grad():

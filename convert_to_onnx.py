@@ -47,6 +47,8 @@ init_net_txt_path = f"models/{net_type}_init_net.pbtxt"
 predict_net_path = f"models/{net_type}_predict_net.pb"
 predict_net_txt_path = f"models/{net_type}_predict_net.pbtxt"
 
-dummy_input = torch.randn(4, 3, 300, 300).cuda()
-torch.onnx.export(net, dummy_input, model_path, verbose=True, output_names=['scores', 'boxes'])
+batch_size = 1 # 4
+
+dummy_input = torch.randn(batch_size, 3, 300, 300).cuda()
+torch.onnx.export(net, dummy_input, model_path, verbose=True, input_names=['input_0'], output_names=['scores', 'boxes'])
 
