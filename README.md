@@ -1,4 +1,4 @@
-# SSD-based Object Detection in Pytorch
+# SSD-based Object Detection in PyTorch
 
 This repo implements [SSD (Single Shot MultiBox Detector)](https://arxiv.org/abs/1512.02325) in PyTorch for object detection, using MobileNet backbones.  It also has out-of-box support for retraining on Google Open Images dataset.  
 
