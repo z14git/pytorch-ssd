@@ -16,6 +16,24 @@ from random import sample
 s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Dowload open image dataset by class.')
+
+    parser.add_argument("--root", type=str, default="data", help="The root directory that you want to store the image data.")
+    parser.add_argument("include_depiction", action="store_true", help="Do you want to include drawings or depictions?")
+    parser.add_argument("--class_names", type=str, help="the classes you want to download.")
+    parser.add_argument("--num_workers", type=int, default=10, help="the number of worker threads used to download images.")
+    parser.add_argument("--retry", type=int, default=10, help="retry times when downloading.")
+    parser.add_argument("--filter_file", type=str, default="", help="This file specifies the image ids you want to exclude.")
+    parser.add_argument('--remove_overlapped', action='store_true', help="Remove single boxes covered by group boxes.")
+    parser.add_argument('--max-boxes-train', type=int, default=-1, help='limit the total number of training bounding boxes to the specified number (default is to use all)')
+    parser.add_argument('--max-boxes-test', type=int, default=-1, help='limit the total number of test bounding boxes to the specified number (default is to use all)')
+    parser.add_argument('--max-boxes-val', type=int, default=-1, help='limit the total number of validation bounding boxes to the specified number (default is to use all)')
+    parser.add_argument('--stats-only', action='store_true', help='only list the number of images from the selected classes, and quit')
+    
+    return parser.parse_args()
+
+
 def download(bucket, root, retry, counter, lock, path):
     i = 0
     src = path
@@ -61,32 +79,7 @@ def http_download(url, path):
 
 def log_counts(values):
     for k, count in values.value_counts().iteritems():
-        logging.warning(f"{k}: {count}/{len(values)} = {count/len(values):.2f}.")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='Dowload open image dataset by class.')
-
-    parser.add_argument("--root", type=str,
-                        help='The root directory that you want to store the open image data.')
-    parser.add_argument("include_depiction", action="store_true",
-                        help="Do you want to include drawings or depictions?")
-    parser.add_argument("--class_names", type=str,
-                        help="the classes you want to download.")
-    parser.add_argument("--num_workers", type=int, default=10,
-                        help="the classes you want to download.")
-    parser.add_argument("--retry", type=int, default=10,
-                        help="retry times when downloading.")
-    parser.add_argument("--filter_file", type=str, default="",
-                        help="This file specifies the image ids you want to exclude.")
-    parser.add_argument('--remove_overlapped', action='store_true',
-                        help="Remove single boxes covered by group boxes.")
-    parser.add_argument('--max-images-train', type=int, default=-1)
-    parser.add_argument('--max-images-test', type=int, default=-1)
-    parser.add_argument('--max-images-val', type=int, default=-1)
-
-    return parser.parse_args()
+        print("    {:s}:  {:d}/{:d} = {:.2f}".format(k, count, len(values), count/len(values)))
 
 
 if __name__ == '__main__':
@@ -95,6 +88,8 @@ if __name__ == '__main__':
 
     args = parse_args()
     bucket = "open-images-dataset"
+    
+    # split the --class_names argument into an array
     names = [e.strip() for e in args.class_names.split(",")]
     class_names = []
     group_filters = []
@@ -111,9 +106,13 @@ if __name__ == '__main__':
         else:
             percentages.append(1.0)
 
+    num_classes = len(class_names)
+    
+    # make sure the output dir exists
     if not os.path.exists(args.root):
         os.makedirs(args.root)
 
+    # apply optional filters to exclude unwanted images
     excluded_images = set()
     if args.filter_file:
         for line in open(args.filter_file):
@@ -122,27 +121,49 @@ if __name__ == '__main__':
                 continue
             excluded_images.add(img_id)
 
+    # download the class description list
     class_description_file = os.path.join(args.root, "class-descriptions-boxable.csv")
     if not os.path.isfile(class_description_file):
         url = "https://storage.googleapis.com/openimages/2018_04/class-descriptions-boxable.csv"
         logging.warning(f"Download {url}.")
         http_download(url, class_description_file)
 
-    class_descriptions = pd.read_csv(class_description_file,
-                                    names=["id", "ClassName"])
+    # load the class descriptions and filter by the requested classes
+    class_descriptions = pd.read_csv(class_description_file, names=["id", "ClassName"])
     class_descriptions = class_descriptions[class_descriptions['ClassName'].isin(class_names)]
 
+    # verify that all the requested classes were found
+    print("requested {:d} classes, found {:d} classes".format(num_classes, len(class_descriptions)))
+    
+    if num_classes != len(class_descriptions):
+        missing_classes = []
+        
+        for class_name in class_names:
+            if len(class_descriptions[class_descriptions['ClassName']==class_name]) == 0:
+                print("couldn't find class '{:s}'".format(class_name))
+                missing_classes.append(class_name)
+                
+        raise Exception("couldn't find classes '{:s}' in the Open Images dataset.  Please confirm that the --class_names argument contains valid classes.".format(','.join(missing_classes)))
+        
+    # determine per-class image file limits
     image_files = []
-    image_files_max = {}
+    annotations_max = {}
+    annotations_count = {}
+    
+    annotations_max["train"] = int(args.max_boxes_train / num_classes)
+    annotations_max["validation"] = int(args.max_boxes_val / num_classes)
+    annotations_max["test"] = int(args.max_boxes_test / num_classes)
 
-    image_files_max["train"] = int(args.max_images_train / len(class_names))
-    image_files_max["validation"] = int(args.max_images_val / len(class_names))
-    image_files_max["test"] = int(args.max_images_test / len(class_names))
-
+    # build the image list to download
     for dataset_type in ["train", "validation", "test"]:
+        annotations_count[dataset_type] = 0
+        print("\n-------------------------------------\n'{:s}' set classes\n-------------------------------------".format(dataset_type))
+    
+        # create subdirectory for this set
         image_dir = os.path.join(args.root, dataset_type)
         os.makedirs(image_dir, exist_ok=True)
 
+        # download the annotations for train/val/test
         annotation_file = f"{args.root}/{dataset_type}-annotations-bbox.csv"
         if not os.path.exists(annotation_file):
             url = f"https://storage.googleapis.com/openimages/2018_04/{dataset_type}/{dataset_type}-annotations-bbox.csv"
@@ -158,7 +179,9 @@ if __name__ == '__main__':
 
         print(' ')
 
+        # determine any images to filter from each class
         filtered = []
+        
         for class_name, group_filter, percentage in zip(class_names, group_filters, percentages):
             sub = annotations.loc[annotations['ClassName'] == class_name, :]
             excluded_images |= set(sub['ImageID'].sample(frac=1 - percentage))
@@ -168,48 +191,69 @@ if __name__ == '__main__':
             elif group_filter == 'group':
                 excluded_images |= set(sub.loc[sub['IsGroupOf'] == 0, 'ImageID'])
 
-            num_images = len(sub)
+            num_annotations = len(sub)
 
             print('dataset_type ' + str(dataset_type))
             print('class_name   ' + str(class_name))
             print('group_filter ' + str(group_filter))
             print('percentage   ' + str(percentage))
-            print('max images   ' + str(image_files_max[dataset_type]))
-            print('total images ' + str(len(sub)))
+            print('max boxes    ' + str(annotations_max[dataset_type]))
+            print('total boxes  ' + str(len(sub)))
 
-            if image_files_max[dataset_type] > 0 and len(sub) > image_files_max[dataset_type]:
-                exclude_count = len(sub) - image_files_max[dataset_type]
+            if annotations_max[dataset_type] > 0 and len(sub) > annotations_max[dataset_type]:
+                exclude_count = len(sub) - annotations_max[dataset_type]
                 excluded_images |= set(list(sub['ImageID'])[:exclude_count]) #set(sample(set(sub['ImageID']), exclude_count)) #.sample(n=exclude_count))
-                num_images = num_images - exclude_count
+                num_annotations = num_annotations - exclude_count
                 print('num excluded ' + str(exclude_count))
 
-            print('used images  ' + str(num_images))
+            print('used boxes   ' + str(num_annotations))
             print(' ')
 
+            annotations_count[dataset_type] += num_annotations
             filtered.append(sub)
 
+
+        # get the list of bounding boxes for our classes
         annotations = pd.concat(filtered)
         annotations = annotations.loc[~annotations['ImageID'].isin(excluded_images), :]
 
-
+        # remove single boxes covered by group boxes
         if args.remove_overlapped:
             images_with_group = annotations.loc[annotations['IsGroupOf'] == 1, 'ImageID']
             annotations = annotations.loc[~(annotations['ImageID'].isin(set(images_with_group)) & (annotations['IsGroupOf'] == 0)), :]
+        
+        # shuffle the ordering of the dataset
         annotations = annotations.sample(frac=1.0)
 
-        logging.warning(f"{dataset_type} bounding boxes size: {annotations.shape[0]}")
-        logging.warning("Approximate Image Stats: ")
-        log_counts(annotations.drop_duplicates(["ImageID", "ClassName"])["ClassName"])
-        logging.warning("Label distribution: ")
+        print("-------------------------------------\n '{:s}' set statistics\n-------------------------------------".format(dataset_type))
+        print("  Bounding boxes count: {:d}".format(annotations.shape[0]))
+        print("  Bounding box distribution: ")
         log_counts(annotations['ClassName'])
+        print("  Approximate image stats: ")
+        log_counts(annotations.drop_duplicates(["ImageID", "ClassName"])["ClassName"])
+        print(" ")
+        
+        #logging.warning(f"Shuffle dataset.")
 
-        logging.warning(f"Shuffle dataset.")
-
-
+        # save our selected annotations to file
         sub_annotation_file = f"{args.root}/sub-{dataset_type}-annotations-bbox.csv"
-        logging.warning(f"Save {dataset_type} data to {sub_annotation_file}.")
+        logging.warning(f"Saving '{dataset_type}' data to {sub_annotation_file}.")
         annotations.to_csv(sub_annotation_file, index=False)
         image_files.extend(f"{dataset_type}/{id}.jpg" for id in set(annotations['ImageID']))
-    logging.warning(f"Start downloading {len(image_files)} images.")
-    batch_download(bucket, image_files, args.root, args.num_workers, args.retry)
-    logging.warning("Task Done.")
+        
+    # display the bounding box counts for each dataset
+    print('\n-------------------------------------\n overall bounding box counts\n-------------------------------------')
+
+    for dataset_type in ["train", "validation", "test"]:
+        print("  {:<15s} {:d}".format("{:s} set:".format(dataset_type), annotations_count[dataset_type]))
+
+    print(' ')
+    print('total bounding boxes: {:d}'.format(sum(annotations_count.values())))
+    print('total images:         {:d}'.format(len(image_files)))
+    print(' ')
+    
+    # download the images
+    if not args.stats_only:    
+        logging.warning(f"Starting to download {len(image_files)} images.")
+        batch_download(bucket, image_files, args.root, args.num_workers, args.retry)
+        logging.warning("Task Done.")
