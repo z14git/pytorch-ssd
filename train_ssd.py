@@ -1,10 +1,13 @@
-import argparse
+#
+# train an SSD model on Pascal VOC or Open Images datasets
+#
 import os
-import logging
 import sys
+import logging
+import argparse
 import itertools
-
 import torch
+
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
 
@@ -24,26 +27,32 @@ from vision.ssd.config import squeezenet_ssd_config
 from vision.ssd.data_preprocessing import TrainAugmentation, TestTransform
 
 parser = argparse.ArgumentParser(
-    description='Single Shot MultiBox Detector Training With Pytorch')
+    description='Single Shot MultiBox Detector Training With PyTorch')
 
-parser.add_argument("--dataset_type", default="voc", type=str,
+# Params for datasets
+parser.add_argument("--dataset_type", "--dataset-type", default="voc", type=str,
                     help='Specify dataset type. Currently support voc and open_images.')
-
-parser.add_argument('--datasets', nargs='+', help='Dataset directory path')
-parser.add_argument('--validation_dataset', help='Dataset directory path')
+parser.add_argument('--datasets', '--dataset', nargs='+', help='Dataset directory path')
+parser.add_argument('--validation_dataset', help='Validation dataset directory path')
 parser.add_argument('--balance_data', action='store_true',
                     help="Balance training data by down-sampling more frequent labels.")
 
-
-parser.add_argument('--net', default="vgg16-ssd",
+# Params for network
+parser.add_argument('--net', default="mb1-ssd",
                     help="The network architecture, it can be mb1-ssd, mb1-lite-ssd, mb2-ssd-lite or vgg16-ssd.")
 parser.add_argument('--freeze_base_net', action='store_true',
                     help="Freeze base net layers.")
 parser.add_argument('--freeze_net', action='store_true',
                     help="Freeze all the layers except the prediction head.")
-
 parser.add_argument('--mb2_width_mult', default=1.0, type=float,
                     help='Width Multiplifier for MobilenetV2')
+
+# Params for loading pretrained basenet or checkpoints.
+parser.add_argument('--base_net',
+                    help='Pretrained base model')
+parser.add_argument('--pretrained_ssd', help='Pre-trained base model')
+parser.add_argument('--resume', default=None, type=str,
+                    help='Checkpoint state_dict file to resume training from')
 
 # Params for SGD
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
@@ -58,14 +67,6 @@ parser.add_argument('--base_net_lr', default=None, type=float,
                     help='initial learning rate for base net.')
 parser.add_argument('--extra_layers_lr', default=None, type=float,
                     help='initial learning rate for the layers not in base net and prediction heads.')
-
-
-# Params for loading pretrained basenet or checkpoints.
-parser.add_argument('--base_net',
-                    help='Pretrained base model')
-parser.add_argument('--pretrained_ssd', help='Pre-trained base model')
-parser.add_argument('--resume', default=None, type=str,
-                    help='Checkpoint state_dict file to resume training from')
 
 # Scheduler
 parser.add_argument('--scheduler', default="multi-step", type=str,
@@ -92,13 +93,12 @@ parser.add_argument('--debug_steps', default=100, type=int,
                     help='Set the debug log output frequency.')
 parser.add_argument('--use_cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
-
-parser.add_argument('--checkpoint_folder', default='models/',
+parser.add_argument('--checkpoint_folder', '--model-dir', default='models/',
                     help='Directory for saving checkpoint models')
-
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                    
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
 
@@ -171,6 +171,15 @@ if __name__ == '__main__':
     timer = Timer()
 
     logging.info(args)
+    
+    # make sure that the checkpoint output dir exists
+    if args.checkpoint_folder:
+        args.checkpoint_folder = os.path.expanduser(args.checkpoint_folder)
+
+        if not os.path.exists(args.checkpoint_folder):
+            os.mkdir(args.checkpoint_folder)
+            
+    # select the network architecture and config     
     if args.net == 'vgg16-ssd':
         create_net = create_vgg_ssd
         config = vgg_ssd_config
@@ -190,26 +199,29 @@ if __name__ == '__main__':
         logging.fatal("The net type is wrong.")
         parser.print_help(sys.stderr)
         sys.exit(1)
+        
+    # create data transforms for train/test/val
     train_transform = TrainAugmentation(config.image_size, config.image_mean, config.image_std)
     target_transform = MatchPrior(config.priors, config.center_variance,
                                   config.size_variance, 0.5)
 
     test_transform = TestTransform(config.image_size, config.image_mean, config.image_std)
 
+    # load datasets (could be multiple)
     logging.info("Prepare training datasets.")
     datasets = []
     for dataset_path in args.datasets:
         if args.dataset_type == 'voc':
             dataset = VOCDataset(dataset_path, transform=train_transform,
                                  target_transform=target_transform)
-            label_file = os.path.join(args.checkpoint_folder, "voc-model-labels.txt")
+            label_file = os.path.join(args.checkpoint_folder, "labels.txt")
             store_labels(label_file, dataset.class_names)
             num_classes = len(dataset.class_names)
         elif args.dataset_type == 'open_images':
             dataset = OpenImagesDataset(dataset_path,
                  transform=train_transform, target_transform=target_transform,
                  dataset_type="train", balance_data=args.balance_data)
-            label_file = os.path.join(args.checkpoint_folder, "open-images-model-labels.txt")
+            label_file = os.path.join(args.checkpoint_folder, "labels.txt")
             store_labels(label_file, dataset.class_names)
             logging.info(dataset)
             num_classes = len(dataset.class_names)
@@ -217,12 +229,16 @@ if __name__ == '__main__':
         else:
             raise ValueError(f"Dataset type {args.dataset_type} is not supported.")
         datasets.append(dataset)
+        
+    # create training dataset
     logging.info(f"Stored labels into file {label_file}.")
     train_dataset = ConcatDataset(datasets)
     logging.info("Train dataset size: {}".format(len(train_dataset)))
     train_loader = DataLoader(train_dataset, args.batch_size,
                               num_workers=args.num_workers,
                               shuffle=True)
+                           
+    # create validation dataset                           
     logging.info("Prepare Validation datasets.")
     if args.dataset_type == "voc":
         val_dataset = VOCDataset(args.validation_dataset, transform=test_transform,
@@ -237,13 +253,17 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_dataset, args.batch_size,
                             num_workers=args.num_workers,
                             shuffle=False)
+                            
+    # create the network
     logging.info("Build network.")
     net = create_net(num_classes)
     min_loss = -10000.0
     last_epoch = -1
 
+    # freeze certain layers (if requested)
     base_net_lr = args.base_net_lr if args.base_net_lr is not None else args.lr
     extra_layers_lr = args.extra_layers_lr if args.extra_layers_lr is not None else args.lr
+    
     if args.freeze_base_net:
         logging.info("Freeze base net.")
         freeze_net_layers(net.base_net)
@@ -278,6 +298,7 @@ if __name__ == '__main__':
             )}
         ]
 
+    # load a previous model checkpoint (if requested)
     timer.start("Load Model")
     if args.resume:
         logging.info(f"Resume from the model {args.resume}")
@@ -290,8 +311,10 @@ if __name__ == '__main__':
         net.init_from_pretrained_ssd(args.pretrained_ssd)
     logging.info(f'Took {timer.end("Load Model"):.2f} seconds to load the model.')
 
+    # move the model to GPU
     net.to(DEVICE)
 
+    # define loss function and optimizer
     criterion = MultiboxLoss(config.priors, iou_threshold=0.5, neg_pos_ratio=3,
                              center_variance=0.1, size_variance=0.2, device=DEVICE)
     optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum,
@@ -299,6 +322,7 @@ if __name__ == '__main__':
     logging.info(f"Learning rate: {args.lr}, Base net learning rate: {base_net_lr}, "
                  + f"Extra Layers learning rate: {extra_layers_lr}.")
 
+    # set learning rate policy
     if args.scheduler == 'multi-step':
         logging.info("Uses MultiStepLR scheduler.")
         milestones = [int(v.strip()) for v in args.milestones.split(",")]
@@ -312,7 +336,9 @@ if __name__ == '__main__':
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    # train for the desired number of epochs
     logging.info(f"Start training from epoch {last_epoch + 1}.")
+    
     for epoch in range(last_epoch + 1, args.num_epochs):
         scheduler.step()
         train(train_loader, net, criterion, optimizer,
