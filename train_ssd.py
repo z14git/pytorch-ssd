@@ -30,26 +30,26 @@ parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Training With PyTorch')
 
 # Params for datasets
-parser.add_argument("--dataset_type", "--dataset-type", default="open_images", type=str,
+parser.add_argument("--dataset-type", default="open_images", type=str,
                     help='Specify dataset type. Currently support voc and open_images.')
-parser.add_argument('--datasets', '--dataset', nargs='+', default="data", help='Dataset directory path')
-parser.add_argument('--validation_dataset', help='Validation dataset directory path')
-parser.add_argument('--balance_data', action='store_true',
+parser.add_argument('--datasets', '--data', nargs='+', default=["data"], help='Dataset directory path')
+parser.add_argument('--validation-dataset', help='Validation dataset directory path')
+parser.add_argument('--balance-data', action='store_true',
                     help="Balance training data by down-sampling more frequent labels.")
 
 # Params for network
 parser.add_argument('--net', default="mb1-ssd",
                     help="The network architecture, it can be mb1-ssd, mb1-lite-ssd, mb2-ssd-lite or vgg16-ssd.")
-parser.add_argument('--freeze_base_net', action='store_true',
+parser.add_argument('--freeze-base-net', action='store_true',
                     help="Freeze base net layers.")
-parser.add_argument('--freeze_net', action='store_true',
+parser.add_argument('--freeze-net', action='store_true',
                     help="Freeze all the layers except the prediction head.")
-parser.add_argument('--mb2_width_mult', default=1.0, type=float,
+parser.add_argument('--mb2-width-mult', default=1.0, type=float,
                     help='Width Multiplifier for MobilenetV2')
 
 # Params for loading pretrained basenet or checkpoints.
-parser.add_argument('--base_net', help='Pretrained base model')
-parser.add_argument('--pretrained_ssd', default='models/mobilenet-v1-ssd-mp-0_675.pth', type=str, help='Pre-trained base model')
+parser.add_argument('--base-net', help='Pretrained base model')
+parser.add_argument('--pretrained-ssd', default='models/mobilenet-v1-ssd-mp-0_675.pth', type=str, help='Pre-trained base model')
 parser.add_argument('--resume', default=None, type=str,
                     help='Checkpoint state_dict file to resume training from')
 
@@ -58,13 +58,13 @@ parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
-parser.add_argument('--weight_decay', default=5e-4, type=float,
+parser.add_argument('--weight-decay', default=5e-4, type=float,
                     help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float,
                     help='Gamma update for SGD')
-parser.add_argument('--base_net_lr', default=0.001, type=float,
+parser.add_argument('--base-net-lr', default=0.001, type=float,
                     help='initial learning rate for base net, or None to use --lr')
-parser.add_argument('--extra_layers_lr', default=None, type=float,
+parser.add_argument('--extra-layers-lr', default=None, type=float,
                     help='initial learning rate for the layers not in base net and prediction heads.')
 
 # Scheduler
@@ -76,27 +76,27 @@ parser.add_argument('--milestones', default="80,100", type=str,
                     help="milestones for MultiStepLR")
 
 # Params for Cosine Annealing
-parser.add_argument('--t_max', default=100, type=float,
+parser.add_argument('--t-max', default=100, type=float,
                     help='T_max value for Cosine Annealing Scheduler.')
 
 # Train params
-parser.add_argument('--batch_size', default=4, type=int,
+parser.add_argument('--batch-size', default=4, type=int,
                     help='Batch size for training')
-parser.add_argument('--num_epochs', default=100, type=int,
+parser.add_argument('--num-epochs', default=30, type=int,
                     help='the number epochs')
-parser.add_argument('--num_workers', default=4, type=int,
+parser.add_argument('--num-workers', default=4, type=int,
                     help='Number of workers used in dataloading')
-parser.add_argument('--validation_epochs', default=1, type=int,
+parser.add_argument('--validation-epochs', default=1, type=int,
                     help='the number epochs between running validation')
-parser.add_argument('--debug_steps', default=10, type=int,
+parser.add_argument('--debug-steps', default=10, type=int,
                     help='Set the debug log output frequency.')
-parser.add_argument('--use_cuda', default=True, type=str2bool,
+parser.add_argument('--use-cuda', default=True, type=str2bool,
                     help='Use CUDA to train model')
-parser.add_argument('--checkpoint_folder', '--model-dir', default='models/',
+parser.add_argument('--checkpoint-folder', '--model-dir', default='models/',
                     help='Directory for saving checkpoint models')
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                    format='%(asctime)s - %(message)s')
                     
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
@@ -132,10 +132,10 @@ def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
             avg_reg_loss = running_regression_loss / debug_steps
             avg_clf_loss = running_classification_loss / debug_steps
             logging.info(
-                f"Epoch: {epoch}, Step: {i}, " +
-                f"Average Loss: {avg_loss:.4f}, " +
-                f"Average Regression Loss {avg_reg_loss:.4f}, " +
-                f"Average Classification Loss: {avg_clf_loss:.4f}"
+                f"Epoch: {epoch}, Step: {i}/{len(loader)}, " +
+                f"Avg Loss: {avg_loss:.4f}, " +
+                f"Avg Regression Loss {avg_reg_loss:.4f}, " +
+                f"Avg Classification Loss: {avg_clf_loss:.4f}"
             )
             running_loss = 0.0
             running_regression_loss = 0.0
