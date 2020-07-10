@@ -20,12 +20,12 @@ s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 def parse_args():
     parser = argparse.ArgumentParser(description='Dowload open image dataset by class.')
 
-    parser.add_argument("--root", type=str, default="data", help="The root directory that you want to store the image data.")
-    parser.add_argument("--include_depiction", action="store_true", help="Do you want to include drawings or depictions?")
-    parser.add_argument("--class_names", type=str, help="the classes you want to download.")
-    parser.add_argument("--num_workers", type=int, default=10, help="the number of worker threads used to download images.")
+    parser.add_argument("--root", "--data", type=str, default="data", help="The root directory that you want to store the image data.")
+    parser.add_argument("--include-depiction", action="store_true", help="Do you want to include drawings or depictions?")
+    parser.add_argument("--class-names", type=str, help="Comma-separated list of classes you want to download.")
+    parser.add_argument("--num-workers", type=int, default=10, help="the number of worker threads used to download images.")
     parser.add_argument("--retry", type=int, default=10, help="retry times when downloading.")
-    parser.add_argument('--remove_overlapped', action='store_true', help="Remove single boxes covered by group boxes.")
+    parser.add_argument('--remove-overlapped', action='store_true', help="Remove single boxes covered by group boxes.")
     parser.add_argument('--max-images', type=int, default=-1, help='limit the total number of images downloaded.  The default is to use all available data.')
     parser.add_argument('--stats-only', action='store_true', help='only list the number of images from the selected classes, and quit')
     
