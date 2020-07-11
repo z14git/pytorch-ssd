@@ -82,7 +82,7 @@ def log_counts(values):
 
 if __name__ == '__main__':
     logging.basicConfig(stream=sys.stdout, level=logging.WARNING,
-                        format='%(asctime)s - %(message)s')
+                        format='%(asctime)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
 
     args = parse_args()
     bucket = "open-images-dataset"
@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     # load the class descriptions and filter by the requested classes
     class_descriptions = pd.read_csv(class_description_file, names=["id", "ClassName"])
-    class_descriptions = class_descriptions[class_descriptions['ClassName'].isin(class_names)]
+    class_descriptions = class_descriptions[class_descriptions['ClassName'].str.lower().isin([x.lower() for x in class_names])]
 
     # verify that all the requested classes were found
     logging.warning(f"Requested {num_classes} classes, found {len(class_descriptions)} classes")

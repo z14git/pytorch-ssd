@@ -4,6 +4,7 @@ import cv2
 import pandas as pd
 import copy
 import os
+import logging
 
 class OpenImagesDataset:
 
@@ -60,16 +61,16 @@ class OpenImagesDataset:
 
     def _read_data(self):
         annotation_file = f"{self.root}/sub-{self.dataset_type}-annotations-bbox.csv"
-        print('loading annotations from: ' + annotation_file)
+        logging.info(f'loading annotations from: {annotation_file}')
         annotations = pd.read_csv(annotation_file)
-        print('annotations loaded from:  ' + annotation_file)
+        logging.info(f'annotations loaded from:  {annotation_file}')
         class_names = ['BACKGROUND'] + sorted(list(annotations['ClassName'].unique()))
         class_dict = {class_name: i for i, class_name in enumerate(class_names)}
         data = []
         for image_id, group in annotations.groupby("ImageID"):
             img_path = os.path.join(self.root, self.dataset_type, image_id + '.jpg')
             if os.path.isfile(img_path) is False:
-                 print('missing ImageID {:s}.jpg - dropping from annotations'.format(image_id))
+                 logging.error(f'missing ImageID {image_id}.jpg - dropping from annotations')
                  continue
             boxes = group.loc[:, ["XMin", "YMin", "XMax", "YMax"]].values.astype(np.float32)
             # make labels 64 bits to satisfy the cross_entropy function
@@ -111,7 +112,7 @@ class OpenImagesDataset:
         return image
 
     def _balance_data(self):
-        print('balancing data')
+        logging.info('balancing data')
         label_image_indexes = [set() for _ in range(len(self.class_names))]
         for i, image in enumerate(self.data):
             for label_id in image['labels']:

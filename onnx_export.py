@@ -104,4 +104,4 @@ output_names = ['scores', 'boxes']
 print('exporting model to ONNX...')
 torch.onnx.export(net, dummy_input, args.output, verbose=True, input_names=input_names, output_names=output_names)
 print('model exported to:  {:s}'.format(args.output))
-
+print('task done, exiting program')

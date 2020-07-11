@@ -84,7 +84,7 @@ parser.add_argument('--batch-size', default=4, type=int,
                     help='Batch size for training')
 parser.add_argument('--num-epochs', default=30, type=int,
                     help='the number epochs')
-parser.add_argument('--num-workers', default=4, type=int,
+parser.add_argument('--num-workers', default=2, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--validation-epochs', default=1, type=int,
                     help='the number epochs between running validation')
@@ -96,14 +96,14 @@ parser.add_argument('--checkpoint-folder', '--model-dir', default='models/',
                     help='Directory for saving checkpoint models')
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format='%(asctime)s - %(message)s')
+                    format='%(asctime)s - %(message)s', datefmt="%Y-%m-%d %H:%M:%S")
                     
 args = parser.parse_args()
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() and args.use_cuda else "cpu")
 
 if args.use_cuda and torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
-    logging.info("Use Cuda.")
+    logging.info("Using CUDA...")
 
 
 def train(loader, net, criterion, optimizer, device, debug_steps=100, epoch=-1):
@@ -354,3 +354,5 @@ if __name__ == '__main__':
             model_path = os.path.join(args.checkpoint_folder, f"{args.net}-Epoch-{epoch}-Loss-{val_loss}.pth")
             net.save(model_path)
             logging.info(f"Saved model {model_path}")
+
+    logging.info("Task done, exiting program.")
