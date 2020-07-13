@@ -28,17 +28,16 @@ class VOCDataset:
         label_file_name = self.root / "labels.txt"
 
         if os.path.isfile(label_file_name):
-            class_string = ""
+            classes = []
+
+            # classes should be a line-separated list
             with open(label_file_name, 'r') as infile:
                 for line in infile:
-                    class_string += line.rstrip()
+                    classes.append(line.rstrip())
 
-            # classes should be a comma separated list
-            
-            classes = class_string.split(',')
             # prepend BACKGROUND as first class
             classes.insert(0, 'BACKGROUND')
-            classes  = [ elem.replace(" ", "") for elem in classes]
+            #classes  = [ elem.replace(" ", "") for elem in classes]
             self.class_names = tuple(classes)
             logging.info("VOC Labels read from file: " + str(self.class_names))
 
@@ -96,7 +95,7 @@ class VOCDataset:
         labels = []
         is_difficult = []
         for object in objects:
-            class_name = object.find('name').text.lower().strip()
+            class_name = object.find('name').text.strip() #.lower().strip()
             # we're only concerned with clases in our list
             if class_name in self.class_dict:
                 bbox = object.find('bndbox')

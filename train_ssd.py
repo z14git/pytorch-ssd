@@ -31,9 +31,8 @@ parser = argparse.ArgumentParser(
 
 # Params for datasets
 parser.add_argument("--dataset-type", default="open_images", type=str,
-                    help='Specify dataset type. Currently support voc and open_images.')
+                    help='Specify dataset type. Currently supports open_images, voc, and custom (custom=voc).')
 parser.add_argument('--datasets', '--data', nargs='+', default=["data"], help='Dataset directory path')
-parser.add_argument('--validation-dataset', help='Validation dataset directory path')
 parser.add_argument('--balance-data', action='store_true',
                     help="Balance training data by down-sampling more frequent labels.")
 
@@ -210,7 +209,7 @@ if __name__ == '__main__':
     logging.info("Prepare training datasets.")
     datasets = []
     for dataset_path in args.datasets:
-        if args.dataset_type == 'voc':
+        if args.dataset_type == 'voc' or args.dataset_type == 'custom':
             dataset = VOCDataset(dataset_path, transform=train_transform,
                                  target_transform=target_transform)
             label_file = os.path.join(args.checkpoint_folder, "labels.txt")
@@ -239,15 +238,15 @@ if __name__ == '__main__':
                            
     # create validation dataset                           
     logging.info("Prepare Validation datasets.")
-    if args.dataset_type == "voc":
-        val_dataset = VOCDataset(args.validation_dataset, transform=test_transform,
+    if args.dataset_type == "voc" or args.dataset_type == 'custom':
+        val_dataset = VOCDataset(dataset_path, transform=test_transform,
                                  target_transform=target_transform, is_test=True)
     elif args.dataset_type == 'open_images':
         val_dataset = OpenImagesDataset(dataset_path,
                                         transform=test_transform, target_transform=target_transform,
                                         dataset_type="test")
         logging.info(val_dataset)
-    logging.info("validation dataset size: {}".format(len(val_dataset)))
+    logging.info("Validation dataset size: {}".format(len(val_dataset)))
 
     val_loader = DataLoader(val_dataset, args.batch_size,
                             num_workers=args.num_workers,
