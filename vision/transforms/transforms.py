@@ -244,7 +244,9 @@ class RandomSampleCrop(object):
         height, width, _ = image.shape
         while True:
             # randomly choose a mode
-            mode = random.choice(self.sample_options)
+            #mode = random.choice(self.sample_options)  # throws numpy deprecation warning
+            mode = self.sample_options[random.randint(len(self.sample_options))]
+            
             if mode is None:
                 return image, boxes, labels
 
