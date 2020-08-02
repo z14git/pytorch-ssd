@@ -21,7 +21,7 @@ class VOCDataset:
             image_sets_file = self.root / "ImageSets/Main/test.txt"
         else:
             image_sets_file = self.root / "ImageSets/Main/trainval.txt"
-        self.ids = VOCDataset._read_image_ids(image_sets_file)
+        self.ids = self._read_image_ids(image_sets_file)
         self.keep_difficult = keep_difficult
 
         # if the labels file exists, read in the class names
@@ -56,14 +56,20 @@ class VOCDataset:
     def __getitem__(self, index):
         image_id = self.ids[index]
         boxes, labels, is_difficult = self._get_annotation(image_id)
+        
         if not self.keep_difficult:
             boxes = boxes[is_difficult == 0]
             labels = labels[is_difficult == 0]
+            
+        #print('__getitem__  image_id=' + str(image_id) + ' \nboxes=' + str(boxes) + ' \nlabels=' + str(labels))
+            
         image = self._read_image(image_id)
+        
         if self.transform:
             image, boxes, labels = self.transform(image, boxes, labels)
         if self.target_transform:
             boxes, labels = self.target_transform(boxes, labels)
+            
         return image, boxes, labels
 
     def get_image(self, index):
@@ -80,14 +86,24 @@ class VOCDataset:
     def __len__(self):
         return len(self.ids)
 
-    @staticmethod
-    def _read_image_ids(image_sets_file):
+    def _read_image_ids(self, image_sets_file):
         ids = []
         with open(image_sets_file) as f:
             for line in f:
-                ids.append(line.rstrip())
+                image_id = line.rstrip()
+                
+                if self._get_num_annotations(image_id) > 0:
+                    ids.append(line.rstrip())
+                else:
+                    print('warning - image {:s} has no box/labels annotations, ignoring from dataset'.format(image_id))
+                    
         return ids
 
+    def _get_num_annotations(self, image_id):
+        annotation_file = self.root / f"Annotations/{image_id}.xml"
+        objects = ET.parse(annotation_file).findall("object")
+        return len(objects)
+        
     def _get_annotation(self, image_id):
         annotation_file = self.root / f"Annotations/{image_id}.xml"
         objects = ET.parse(annotation_file).findall("object")
