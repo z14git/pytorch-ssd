@@ -92,6 +92,10 @@ class VOCDataset:
             for line in f:
                 image_id = line.rstrip()
                 
+                if len(image_id) <= 0:
+                    print('warning - found empty line in {:s}, skipping line'.format(image_sets_file))
+                    continue
+                    
                 if self._get_num_annotations(image_id) > 0:
                     ids.append(line.rstrip())
                 else:
