@@ -97,7 +97,10 @@ class VOCDataset:
                     continue
                     
                 if self._get_num_annotations(image_id) > 0:
-                    ids.append(line.rstrip())
+                    if self._find_image(image_id) is not None:
+                        ids.append(line.rstrip())
+                    else:
+                        print('warning - could not find image {:s} - ignoring from dataset'.format(image_id))
                 else:
                     print('warning - image {:s} has no box/labels annotations, ignoring from dataset'.format(image_id))
                     
@@ -130,14 +133,37 @@ class VOCDataset:
                 labels.append(self.class_dict[class_name])
                 is_difficult_str = object.find('difficult').text
                 is_difficult.append(int(is_difficult_str) if is_difficult_str else 0)
+            else:
+                print("warning - image {:s} has object with unknown class '{:s}'".format(image_id, class_name))
 
         return (np.array(boxes, dtype=np.float32),
                 np.array(labels, dtype=np.int64),
                 np.array(is_difficult, dtype=np.uint8))
 
+    def _find_image(self, image_id):
+        image_file = os.path.join(self.root, "JPEGImages/{:s}.jpg".format(image_id))
+        
+        if os.path.exists(image_file):
+            return image_file
+            
+        image_file = os.path.join(self.root, "JPEGImages/{:s}.JPG".format(image_id))
+        
+        if os.path.exists(image_file):
+            return image_file
+            
+        return None
+        
     def _read_image(self, image_id):
-        image_file = self.root / f"JPEGImages/{image_id}.jpg"
+        image_file = self._find_image(image_id)
+        
+        if image_file is None:
+            raise IOError('failed to load ' + image_file)
+            
         image = cv2.imread(str(image_file))
+        
+        if image is None or image.size == 0:
+            raise IOError('failed to load ' + str(image_file))
+            
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
