@@ -17,10 +17,22 @@ class VOCDataset:
         self.root = pathlib.Path(root)
         self.transform = transform
         self.target_transform = target_transform
+
+        # determine the image set file to use
         if is_test:
             image_sets_file = self.root / "ImageSets/Main/test.txt"
         else:
             image_sets_file = self.root / "ImageSets/Main/trainval.txt"
+            
+        if not os.path.isfile(image_sets_file):
+            image_sets_default = self.root / "ImageSets/Main/default.txt"   # CVAT only saves default.txt
+
+            if os.path.isfile(image_sets_default):
+                image_sets_file = image_sets_default
+            else:
+                raise IOError("missing ImageSet file {:s}".format(image_sets_file))
+
+        # read the image set ID's
         self.ids = self._read_image_ids(image_sets_file)
         self.keep_difficult = keep_difficult
 
@@ -131,7 +143,14 @@ class VOCDataset:
                 boxes.append([x1, y1, x2, y2])
 
                 labels.append(self.class_dict[class_name])
-                is_difficult_str = object.find('difficult').text
+                
+                # retrieve <difficult> element
+                is_difficult_obj = object.find('difficult')
+                is_difficult_str = '0'
+
+                if is_difficult_obj is not None:    
+                    is_difficult_str = object.find('difficult').text
+
                 is_difficult.append(int(is_difficult_str) if is_difficult_str else 0)
             else:
                 print("warning - image {:s} has object with unknown class '{:s}'".format(image_id, class_name))
