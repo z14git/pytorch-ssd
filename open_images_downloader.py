@@ -14,7 +14,12 @@ import functools
 from urllib import request
 from random import sample 
 
-s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED))
+proxies = {
+    'http': 'socks5://192.168.55.100:10808',
+    'https': 'socks5://192.168.55.100:10808'
+}
+
+s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED, proxies=proxies))
 
 
 def parse_args():
@@ -67,7 +72,7 @@ def batch_download(bucket, file_paths, root, num_workers=10, retry=10):
 
 
 def http_download(url, path):
-    with request.urlopen(url) as f:
+    with request.urlopen(url, proxies=proxies) as f:
         with open(path, "wb") as fout:
             buf = f.read(1024)
             while buf:
@@ -202,4 +207,3 @@ if __name__ == '__main__':
     logging.warning(f"Starting to download {len(image_files)} images.")
     batch_download(bucket, image_files, args.root, args.num_workers, args.retry)
     logging.warning("Task Done.")
-    
