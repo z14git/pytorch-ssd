@@ -19,6 +19,9 @@ proxies = {
     'https': 'socks5://192.168.55.100:10808'
 }
 
+proxy_handler  = request.ProxyHandler({'socks5': '192.168.55.100:10808'})
+opener = request.build_opener(proxy_handler)
+
 s3 = boto3.client('s3', config=Config(signature_version=UNSIGNED, proxies=proxies))
 
 
@@ -72,7 +75,7 @@ def batch_download(bucket, file_paths, root, num_workers=10, retry=10):
 
 
 def http_download(url, path):
-    with request.urlopen(url, proxies=proxies) as f:
+    with request.urlopen(url) as f:
         with open(path, "wb") as fout:
             buf = f.read(1024)
             while buf:
